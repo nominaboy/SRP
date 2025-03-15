@@ -1,9 +1,5 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
-using static CameraSettings;
-using static UnityEditor.ShaderData;
 
 public partial class CameraRenderer {
     private ScriptableRenderContext context;
@@ -16,9 +12,13 @@ public partial class CameraRenderer {
     private bool useHDR, useScaledRendering;
     private bool useColorTexture, useDepthTexture, useIntermediateBuffer;
 
+    private Vector2Int bufferSize;
+
     private static ShaderTagId unlitShaderTagId = new ShaderTagId("SRPDefaultUnlit");
     private static ShaderTagId litShaderTagId = new ShaderTagId("CustomLit");
-    private static int colorAttachmentId = Shader.PropertyToID("_CameraColorAttachment"),
+    private static int
+        bufferSizeId = Shader.PropertyToID("_CameraBufferSize"),
+        colorAttachmentId = Shader.PropertyToID("_CameraColorAttachment"),
         depthAttachmentId = Shader.PropertyToID("_CameraDepthAttachment"),
         colorTextureId = Shader.PropertyToID("_CameraColorTexture"),
         depthTextureId = Shader.PropertyToID("_CameraDepthTexture"),
@@ -58,8 +58,7 @@ public partial class CameraRenderer {
         if (camera.cameraType == CameraType.Reflection) {
             useColorTexture = cameraBufferSettings.copyColorReflection;
             useDepthTexture = cameraBufferSettings.copyDepthReflection;
-        }
-        else {
+        } else {
             useColorTexture = cameraBufferSettings.copyColor && cameraSettings.copyColor;
             useDepthTexture = cameraBufferSettings.copyDepth && cameraSettings.copyDepth;
         }
@@ -67,16 +66,33 @@ public partial class CameraRenderer {
             postFXSettings = cameraSettings.postFXSettings;
         }
 
+        float renderScale = cameraSettings.GetRenderScale(cameraBufferSettings.renderScale);
+        useScaledRendering = renderScale < 0.99f || renderScale > 1.01f;
         PrepareBuffer();
         PrepareForSceneWindow();
         if (!Cull(shadowSettings.maxDistance)) {
             return;
         }
         useHDR = cameraBufferSettings.allowHDR && camera.allowHDR;
+        if (useScaledRendering) {
+            renderScale = Mathf.Clamp(renderScale, 0.1f, 2f);
+            bufferSize.x = (int)(camera.pixelWidth * renderScale);
+            bufferSize.y = (int)(camera.pixelHeight * renderScale);
+        } else {
+            bufferSize.x = camera.pixelWidth;
+            bufferSize.y = camera.pixelHeight;
+        }
+
+
         buffer.BeginSample(SampleName);
+        buffer.SetGlobalVector(bufferSizeId, new Vector4(
+            1f / bufferSize.x, 1f / bufferSize.y,
+            bufferSize.x, bufferSize.y
+        ));
+
         ExecuteBuffer();
         lighting.Setup(context, cullingResults, shadowSettings, useLightsPerObject, cameraSettings.maskLights ? cameraSettings.renderingLayerMask : -1);
-        postFXStack.Setup(context, camera, postFXSettings, useHDR, colorLUTResolution, cameraSettings.finalBlendMode);
+        postFXStack.Setup(context, camera, bufferSize, postFXSettings, useHDR, colorLUTResolution, cameraSettings.finalBlendMode, cameraBufferSettings.bicubicRescaling);
         buffer.EndSample(SampleName);
         Setup();
         DrawVisibleGeometry(useDynamicBatching, useGPUInstancing, useLightsPerObject, cameraSettings.renderingLayerMask);
@@ -84,8 +100,7 @@ public partial class CameraRenderer {
         DrawGizmosBeforeFX();
         if (postFXStack.IsActive) {
             postFXStack.Render(colorAttachmentId);
-        }
-        else if (useIntermediateBuffer) {
+        } else if (useIntermediateBuffer) {
             DrawFinal(cameraSettings.finalBlendMode);
             ExecuteBuffer();
         }
@@ -131,15 +146,15 @@ public partial class CameraRenderer {
         context.SetupCameraProperties(camera);
         CameraClearFlags flags = camera.clearFlags;
 
-        useIntermediateBuffer = useColorTexture || useDepthTexture || postFXStack.IsActive;
+        useIntermediateBuffer = useScaledRendering || useColorTexture || useDepthTexture || postFXStack.IsActive;
         if (useIntermediateBuffer) {
             if (flags > CameraClearFlags.Color) {
                 flags = CameraClearFlags.Color; // Forced Clearing
             }
 
-            buffer.GetTemporaryRT(colorAttachmentId, camera.pixelWidth, camera.pixelHeight,
+            buffer.GetTemporaryRT(colorAttachmentId, bufferSize.x, bufferSize.y,
                 0, FilterMode.Bilinear, useHDR ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default);
-            buffer.GetTemporaryRT(depthAttachmentId, camera.pixelWidth, camera.pixelHeight,
+            buffer.GetTemporaryRT(depthAttachmentId, bufferSize.x, bufferSize.y,
                 32, FilterMode.Point, RenderTextureFormat.Depth);
             buffer.SetRenderTarget(colorAttachmentId, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store,
                 depthAttachmentId, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store);
@@ -193,22 +208,20 @@ public partial class CameraRenderer {
 
     private void CopyAttachments() {
         if (useColorTexture) {
-            buffer.GetTemporaryRT(colorTextureId, camera.pixelWidth, camera.pixelHeight, 0, FilterMode.Bilinear,
+            buffer.GetTemporaryRT(colorTextureId, bufferSize.x, bufferSize.y, 0, FilterMode.Bilinear,
                 useHDR ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default);
             if (copyTextureSupported) {
                 buffer.CopyTexture(colorAttachmentId, colorTextureId);
-            }
-            else {
+            } else {
                 Draw(colorAttachmentId, colorTextureId);
             }
         }
 
         if (useDepthTexture) {
-            buffer.GetTemporaryRT(depthTextureId, camera.pixelWidth, camera.pixelHeight, 32, FilterMode.Point, RenderTextureFormat.Depth);
+            buffer.GetTemporaryRT(depthTextureId, bufferSize.x, bufferSize.y, 32, FilterMode.Point, RenderTextureFormat.Depth);
             if (copyTextureSupported) {
                 buffer.CopyTexture(depthAttachmentId, depthTextureId);
-            }
-            else {
+            } else {
                 Draw(depthAttachmentId, depthTextureId, true);
 
             }

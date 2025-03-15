@@ -17,6 +17,7 @@ float4 _PostFXSource_TexelSize;
 float4 _BloomThreshold;
 float _BloomIntensity;
 bool _BloomBicubicUpsampling;
+bool _CopyBicubic;
 
 float4 _ColorAdjustments;
 float4 _ColorFilter;
@@ -282,7 +283,15 @@ float3 ApplyColorGradingLUT (float3 color) {
 float4 FinalPassFragment (Varyings input) : SV_TARGET {
 	float4 color = GetSource(input.screenUV);
 	color.rgb = ApplyColorGradingLUT(color.rgb);
-	return color;
+	return color; 
+}
+
+float4 FinalPassFragmentRescale (Varyings input) : SV_TARGET {
+	if (_CopyBicubic) {
+		return GetSourceBicubic(input.screenUV);
+	} else {
+		return GetSource(input.screenUV);
+	}
 }
 
 #endif

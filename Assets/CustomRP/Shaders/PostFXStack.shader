@@ -147,5 +147,17 @@ Shader "Hidden/Custom RP/Post FX Stack" {
 			ENDHLSL
 		}
 
+		Pass {
+			Name "Final Rescale"
+
+			Blend [_FinalSrcBlend] [_FinalDstBlend]
+
+			HLSLPROGRAM
+				#pragma target 3.5
+				#pragma vertex DefaultPassVertex
+				#pragma fragment FinalPassFragmentRescale
+			ENDHLSL
+		}
+
 	}
 }
