@@ -17,8 +17,9 @@ public partial class PostFXStack {
         ColorGradingACES,
         ColorGradingNeutral,
         ColorGradingReinhard,
-        Final,
-        FinalRescale
+        ApplyColorGrading,
+        FinalRescale,
+        FXAA
     }
 
     private const string bufferName = "Post FX";
@@ -52,12 +53,14 @@ public partial class PostFXStack {
     private int finalSrcBlendId = Shader.PropertyToID("_FinalSrcBlend"),
         finalDstBlendId = Shader.PropertyToID("_FinalDstBlend"),
         copyBicubicId = Shader.PropertyToID("_CopyBicubic"),
+        colorGradingResultId = Shader.PropertyToID("_ColorGradingResult"),
         finalResultId = Shader.PropertyToID("_FinalResult");
 
     private static Rect fullViewRect = new Rect(0f, 0f, 1f, 1f);
 
     private bool useHDR;
     private CameraBufferSettings.BicubicRescalingMode bicubicRescaling;
+    private CameraBufferSettings.FXAA fxaa;
     private int colorLUTResolution;
     private Vector2Int bufferSize;
 
@@ -204,7 +207,7 @@ public partial class PostFXStack {
             ));
     }
 
-    private void DoColorGradingAndToneMapping(int sourceId) {
+    private void DoFinal(int sourceId) {
         ConfigureColorAdjustments();
         ConfigureWhiteBalance();
         ConfigureSplitToning();
@@ -224,19 +227,35 @@ public partial class PostFXStack {
         buffer.SetGlobalVector(colorGradingLUTParametersId, new Vector4(
                 1f / lutWidth, 1f / lutHeight, lutHeight - 1f
             ));
+        buffer.SetGlobalFloat(finalSrcBlendId, 1f);
+        buffer.SetGlobalFloat(finalDstBlendId, 0f);
+        if (fxaa.enabled) {
+            buffer.GetTemporaryRT(colorGradingResultId, bufferSize.x, bufferSize.y, 0,
+                FilterMode.Bilinear, RenderTextureFormat.Default);
+            Draw(sourceId, colorGradingResultId, Pass.ApplyColorGrading);
+        }
+
         if (bufferSize.x == camera.pixelWidth) {
             // No Render Scale other than 1
-            DrawFinal(sourceId, Pass.Final);
+            if (fxaa.enabled) {
+                DrawFinal(colorGradingResultId, Pass.FXAA);
+                buffer.ReleaseTemporaryRT(colorGradingResultId);
+            } else {
+                DrawFinal(sourceId, Pass.ApplyColorGrading);
+            }
         } else {
-            buffer.SetGlobalFloat(finalSrcBlendId, 1f);
-            buffer.SetGlobalFloat(finalDstBlendId, 0f);
             buffer.GetTemporaryRT(finalResultId, bufferSize.x, bufferSize.y, 0,
                 FilterMode.Bilinear, RenderTextureFormat.Default);
             // Switch Inter->PP to PP->Inter
-            Draw(sourceId, finalResultId, Pass.Final);
-            bool bicubicSampling = 
+            if (fxaa.enabled) {
+                Draw(colorGradingResultId, finalResultId, Pass.FXAA);
+                buffer.ReleaseTemporaryRT(colorGradingResultId);
+            } else {
+                Draw(sourceId, finalResultId, Pass.ApplyColorGrading);
+            }
+            bool bicubicSampling =
                 bicubicRescaling == CameraBufferSettings.BicubicRescalingMode.UpAndDown ||
-                bicubicRescaling == CameraBufferSettings.BicubicRescalingMode.UpOnly && 
+                bicubicRescaling == CameraBufferSettings.BicubicRescalingMode.UpOnly &&
                 bufferSize.x < camera.pixelWidth;
             buffer.SetGlobalFloat(copyBicubicId, bicubicSampling ? 1f : 0f);
             DrawFinal(finalResultId, Pass.FinalRescale);
@@ -247,8 +266,9 @@ public partial class PostFXStack {
     }
 
     public void Setup(ScriptableRenderContext context, Camera camera, Vector2Int bufferSize, PostFXSettings settings,
-        bool useHDR, int colorLUTResolution, CameraSettings.FinalBlendMode finalBlendMode, 
-        CameraBufferSettings.BicubicRescalingMode bicubicRescaling) {
+        bool useHDR, int colorLUTResolution, CameraSettings.FinalBlendMode finalBlendMode,
+        CameraBufferSettings.BicubicRescalingMode bicubicRescaling, CameraBufferSettings.FXAA fxaa) {
+        this.fxaa = fxaa;
         this.bicubicRescaling = bicubicRescaling;
         this.bufferSize = bufferSize;
         this.finalBlendMode = finalBlendMode;
@@ -262,10 +282,10 @@ public partial class PostFXStack {
 
     public void Render(int sourceId) {
         if (DoBloom(sourceId)) {
-            DoColorGradingAndToneMapping(bloomResultId);
+            DoFinal(bloomResultId);
             buffer.ReleaseTemporaryRT(bloomResultId);
         } else {
-            DoColorGradingAndToneMapping(sourceId);
+            DoFinal(sourceId);
         }
         context.ExecuteCommandBuffer(buffer);
         buffer.Clear();

@@ -10,4 +10,11 @@ public struct CameraBufferSettings {
 
     [Range(0.1f, 2f)]
     public float renderScale;
+
+    [Serializable]
+    public struct FXAA {
+        public bool enabled;
+    }
+
+    public FXAA fxaa;
 }
