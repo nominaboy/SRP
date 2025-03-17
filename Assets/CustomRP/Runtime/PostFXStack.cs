@@ -18,8 +18,10 @@ public partial class PostFXStack {
         ColorGradingNeutral,
         ColorGradingReinhard,
         ApplyColorGrading,
+        ApplyColorGradingWithLuma,
         FinalRescale,
-        FXAA
+        FXAA,
+        FXAAWithLuma
     }
 
     private const string bufferName = "Post FX";
@@ -58,7 +60,7 @@ public partial class PostFXStack {
 
     private static Rect fullViewRect = new Rect(0f, 0f, 1f, 1f);
 
-    private bool useHDR;
+    private bool keepAlpha, useHDR;
     private CameraBufferSettings.BicubicRescalingMode bicubicRescaling;
     private CameraBufferSettings.FXAA fxaa;
     private int colorLUTResolution;
@@ -232,13 +234,13 @@ public partial class PostFXStack {
         if (fxaa.enabled) {
             buffer.GetTemporaryRT(colorGradingResultId, bufferSize.x, bufferSize.y, 0,
                 FilterMode.Bilinear, RenderTextureFormat.Default);
-            Draw(sourceId, colorGradingResultId, Pass.ApplyColorGrading);
+            Draw(sourceId, colorGradingResultId, keepAlpha ? Pass.ApplyColorGrading : Pass.ApplyColorGradingWithLuma);
         }
 
         if (bufferSize.x == camera.pixelWidth) {
             // No Render Scale other than 1
             if (fxaa.enabled) {
-                DrawFinal(colorGradingResultId, Pass.FXAA);
+                DrawFinal(colorGradingResultId, keepAlpha ? Pass.FXAA : Pass.FXAAWithLuma);
                 buffer.ReleaseTemporaryRT(colorGradingResultId);
             } else {
                 DrawFinal(sourceId, Pass.ApplyColorGrading);
@@ -266,13 +268,14 @@ public partial class PostFXStack {
     }
 
     public void Setup(ScriptableRenderContext context, Camera camera, Vector2Int bufferSize, PostFXSettings settings,
-        bool useHDR, int colorLUTResolution, CameraSettings.FinalBlendMode finalBlendMode,
+        bool keepAlpha, bool useHDR, int colorLUTResolution, CameraSettings.FinalBlendMode finalBlendMode,
         CameraBufferSettings.BicubicRescalingMode bicubicRescaling, CameraBufferSettings.FXAA fxaa) {
         this.fxaa = fxaa;
         this.bicubicRescaling = bicubicRescaling;
         this.bufferSize = bufferSize;
         this.finalBlendMode = finalBlendMode;
         this.colorLUTResolution = colorLUTResolution;
+        this.keepAlpha = keepAlpha;
         this.useHDR = useHDR;
         this.context = context;
         this.camera = camera;

@@ -21,7 +21,7 @@ MonoBehaviour:
     bicubicRescaling: 1
     renderScale: 1
     fxaa:
-      enabled: 0
+      enabled: 1
   useDynamicBatching: 0
   useGPUInstancing: 1
   useSRPBatcher: 1

@@ -10,6 +10,7 @@ public class CameraSettings {
     public bool overridePostFX = false;
     public PostFXSettings postFXSettings = default;
     public bool allowFXAA = false;
+    public bool keepAlpha = false;
     public bool maskLights = false;
 
     public enum RenderScaleMode { Inherit, Multiply, Override }
