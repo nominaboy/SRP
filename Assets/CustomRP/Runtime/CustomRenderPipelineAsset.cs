@@ -6,7 +6,15 @@ using UnityEngine.Rendering;
 public partial class CustomRenderPipelineAsset : RenderPipelineAsset {
 
     [SerializeField]
-    CameraBufferSettings cameraBufferSettings = new CameraBufferSettings { allowHDR = true, renderScale = 1f };
+    CameraBufferSettings cameraBufferSettings = new CameraBufferSettings {
+        allowHDR = true,
+        renderScale = 1f,
+        fxaa = new CameraBufferSettings.FXAA {
+            fixedThreshold = 0.0833f,
+            relativeThreshold = 0.166f,
+            subpixelBlending = 0.75f
+        }
+    };
     [SerializeField]
     bool useDynamicBatching = true, useGPUInstancing = true, useSRPBatcher = true, useLightsPerObject = true;
     [SerializeField]

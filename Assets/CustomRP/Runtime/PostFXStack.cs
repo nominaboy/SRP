@@ -25,6 +25,10 @@ public partial class PostFXStack {
     }
 
     private const string bufferName = "Post FX";
+    private const string
+        fxaaQualityLowKeyword = "FXAA_QUALITY_LOW",
+        fxaaQualityMediumKeyword = "FXAA_QUALITY_MEDIUM";
+
     private const int maxBloomPyramidLevels = 16;
 
     private int bloomPyramidId;
@@ -57,6 +61,8 @@ public partial class PostFXStack {
         copyBicubicId = Shader.PropertyToID("_CopyBicubic"),
         colorGradingResultId = Shader.PropertyToID("_ColorGradingResult"),
         finalResultId = Shader.PropertyToID("_FinalResult");
+
+    private int fxaaConfigId = Shader.PropertyToID("_FXAAConfig");
 
     private static Rect fullViewRect = new Rect(0f, 0f, 1f, 1f);
 
@@ -209,6 +215,20 @@ public partial class PostFXStack {
             ));
     }
 
+    private void ConfigureFXAA() {
+        if (fxaa.quality == CameraBufferSettings.FXAA.Quality.Low) {
+            buffer.EnableShaderKeyword(fxaaQualityLowKeyword);
+            buffer.DisableShaderKeyword(fxaaQualityMediumKeyword);
+        } else if (fxaa.quality == CameraBufferSettings.FXAA.Quality.Medium) {
+            buffer.EnableShaderKeyword(fxaaQualityMediumKeyword);
+            buffer.DisableShaderKeyword(fxaaQualityLowKeyword);
+        } else {
+            buffer.DisableShaderKeyword(fxaaQualityMediumKeyword);
+            buffer.DisableShaderKeyword(fxaaQualityLowKeyword);
+        }
+        buffer.SetGlobalVector(fxaaConfigId, new Vector4(fxaa.fixedThreshold, fxaa.relativeThreshold, fxaa.subpixelBlending));
+    }
+
     private void DoFinal(int sourceId) {
         ConfigureColorAdjustments();
         ConfigureWhiteBalance();
@@ -232,6 +252,7 @@ public partial class PostFXStack {
         buffer.SetGlobalFloat(finalSrcBlendId, 1f);
         buffer.SetGlobalFloat(finalDstBlendId, 0f);
         if (fxaa.enabled) {
+            ConfigureFXAA();
             buffer.GetTemporaryRT(colorGradingResultId, bufferSize.x, bufferSize.y, 0,
                 FilterMode.Bilinear, RenderTextureFormat.Default);
             Draw(sourceId, colorGradingResultId, keepAlpha ? Pass.ApplyColorGrading : Pass.ApplyColorGradingWithLuma);

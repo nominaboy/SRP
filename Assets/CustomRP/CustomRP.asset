@@ -22,6 +22,10 @@ MonoBehaviour:
     renderScale: 1
     fxaa:
       enabled: 1
+      fixedThreshold: 0.0312
+      relativeThreshold: 0.063
+      subpixelBlending: 0.75
+      quality: 0
   useDynamicBatching: 0
   useGPUInstancing: 1
   useSRPBatcher: 1
